@@ -9,9 +9,21 @@ class Anki:
             words = {}
         if not isinstance(words, dict):
             raise ValueError('Параметр words должен быть словарём')
+        self.words: dict[str, str] = {}
         for word, translation in words.items():
-            if not isinstance(word, str) or not isinstance(translation, str):
-                raise ValueError(
-                    'Все слова и переводы в words должны быть строками'
-                )
-        self.words: dict[str, str] = words
+            self.add_word(word, translation)
+
+    @staticmethod
+    def normalize_word(word: str) -> str:
+        """Убирает пробелы по краям и приводит слово к нижнему регистру."""
+        if not isinstance(word, str):
+            raise ValueError(
+                f'Слово должно быть строкой, получено: {type(word).__name__}'
+            )
+        return word.strip().lower()
+
+    def add_word(self, word: str, translation: str) -> None:
+        """Добавляет в словарь пару «слово - перевод» после нормализации."""
+        normalized_word = self.normalize_word(word)
+        normalized_translation = self.normalize_word(translation)
+        self.words[normalized_word] = normalized_translation
