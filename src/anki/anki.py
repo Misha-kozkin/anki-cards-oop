@@ -9,7 +9,7 @@ class Anki:
             words = {}
         if not isinstance(words, dict):
             raise ValueError('Параметр words должен быть словарём')
-        self.words: dict[str, str] = {}
+        self._words: dict[str, str] = {}
         for word, translation in words.items():
             self.add_word(word, translation)
 
@@ -26,4 +26,8 @@ class Anki:
         """Добавляет в словарь пару «слово - перевод» после нормализации."""
         normalized_word = self.normalize_word(word)
         normalized_translation = self.normalize_word(translation)
-        self.words[normalized_word] = normalized_translation
+        self._words[normalized_word] = normalized_translation
+
+    def get_words(self) -> dict[str, str]:
+        """Возвращает копию словаря со словами."""
+        return self._words.copy()

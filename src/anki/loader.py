@@ -13,7 +13,7 @@ class TextFileLoader:
             raise ValueError(
                 f'Путь {path} указывает на директорию, а нужен файл'
             )
-        self.file_path: Path = path
+        self._file_path: Path = path
 
     def load_words(self) -> dict[str, str]:
         """Читает пары «слово,перевод» из файла.
@@ -23,7 +23,7 @@ class TextFileLoader:
         """
         words: dict[str, str] = {}
         try:
-            with self.file_path.open(encoding='utf-8') as file:
+            with self._file_path.open(encoding='utf-8') as file:
                 for line in file:
                     parts = line.strip().split(',')
                     if len(parts) == 2:
@@ -37,6 +37,6 @@ class TextFileLoader:
         """Перезаписывает файл парами «слово,перевод» из словаря."""
         if not isinstance(words, dict):
             raise ValueError('Параметр words должен быть словарём')
-        with self.file_path.open('w', encoding='utf-8') as file:
+        with self._file_path.open('w', encoding='utf-8') as file:
             for word, translation in words.items():
                 file.write(word + ',' + translation + '\n')
