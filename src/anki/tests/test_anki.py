@@ -111,3 +111,49 @@ def test_anki_add_word_raises_ValueError_on_invalid_input(
     assert anki.get_words() == {}, (
         'После ошибки в `add_word` словарь не должен меняться'
     )
+
+
+@pytest.mark.parametrize('word', ['hello', 'HELLO', '  Hello  ', '\thello\n'])
+def test_contains_finds_word_regardless_of_case_and_spaces(word: str) -> None:
+    """Оператор in находит слово независимо от регистра и пробелов."""
+    anki = Anki(words={'hello': 'привет'})
+    assert word in anki, (
+        f'Слово {word!r} должно находиться в колоде после нормализации'
+    )
+
+
+def test_contains_returns_false_for_missing_word() -> None:
+    """Оператор in возвращает False для слова, которого нет в колоде."""
+    anki = Anki(words={'hello': 'привет'})
+    assert 'python' not in anki
+
+
+def test_contains_searches_words_not_translations() -> None:
+    """Оператор in ищет среди слов, а не среди переводов."""
+    anki = Anki(words={'hello': 'привет'})
+    assert 'привет' not in anki
+
+
+@pytest.mark.parametrize('invalid_input', [1, None, [], set()])
+def test_contains_raises_ValueError_on_invalid_input(
+    invalid_input: Any,
+) -> None:
+    """Оператор in выбрасывает ValueError, если искомое — не строка."""
+    anki = Anki()
+    with pytest.raises(ValueError, match='должно быть строкой'):
+        invalid_input in anki
+        pytest.fail('Оператор in должен выдавать ValueError для не-строки')
+
+
+@pytest.mark.parametrize(
+    'words, expected', [
+        ({}, 'Колода Anki, слов в колоде: 0'),
+        ({'cat': 'кот'}, 'Колода Anki, слов в колоде: 1'),
+        ({'cat': 'кот', 'dog': 'собака'}, 'Колода Anki, слов в колоде: 2'),
+    ]
+)
+def test_str_shows_number_of_words(
+    words: dict[str, str], expected: str
+) -> None:
+    """Функция str() показывает количество слов в колоде."""
+    assert str(Anki(words=words)) == expected

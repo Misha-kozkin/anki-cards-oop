@@ -78,3 +78,39 @@ class Anki:
             Новый словарь {слово: перевод}.
         """
         return self._words.copy()
+
+    def __contains__(self, word: str) -> bool:
+        """Проверяет, есть ли слово в игре (оператор in).
+
+        Слово нормализуется перед поиском, поэтому регистр и пробелы
+        по краям не важны.
+
+        Args:
+            word: Слово, которое нужно найти.
+
+        Returns:
+            True, если слово есть в словаре, иначе False.
+
+        Raises:
+            ValueError: Если word не является строкой.
+
+        Examples:
+            >>> anki = Anki(words={'Python': 'Питон'})
+            >>> 'PYTHON' in anki
+            True
+            >>> 'TypeScript' in anki
+            False
+        """
+        return self.normalize_word(word) in self._words
+
+    def __str__(self) -> str:
+        """Возвращает описание колоды для print() и str().
+
+        Returns:
+            Строка с количеством слов в колоде.
+
+        Examples:
+            >>> print(Anki(words={'cat': 'кот', 'dog': 'собака'}))
+            Колода Anki, слов в колоде: 2
+        """
+        return f'Колода Anki, слов в колоде: {len(self._words)}'
