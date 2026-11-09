@@ -157,3 +157,65 @@ def test_str_shows_number_of_words(
 ) -> None:
     """Функция str() показывает количество слов в колоде."""
     assert str(Anki(words=words)) == expected
+
+
+@pytest.fixture()
+def anki_with_words() -> Anki:
+    """Возвращает игру с двумя словами."""
+    return Anki(words={'hello': 'привет', 'world': 'мир'})
+
+
+def test_get_random_word_raises_ValueError_for_empty_game() -> None:
+    """Метод get_random_word выбрасывает ValueError, если слов нет."""
+    with pytest.raises(ValueError, match='нет слов'):
+        Anki().get_random_word()
+        pytest.fail('Для пустой игры должна быть ошибка ValueError')
+
+
+def test_get_random_word_returns_word_from_game(anki_with_words: Anki) -> None:
+    """Метод get_random_word возвращает слово, а не перевод."""
+    for _ in range(20):
+        assert anki_with_words.get_random_word() in {'hello', 'world'}
+
+
+@pytest.mark.parametrize(
+    'word, expected', [('hello', 'привет'), ('  WORLD ', 'мир')]
+)
+def test_get_translation_returns_translation(
+    anki_with_words: Anki, word: str, expected: str
+) -> None:
+    """Метод get_translation находит перевод нормализованного слова."""
+    assert anki_with_words.get_translation(word) == expected
+
+
+def test_get_translation_raises_ValueError_for_missing_word(
+    anki_with_words: Anki,
+) -> None:
+    """Метод get_translation выбрасывает ValueError для чужого слова."""
+    with pytest.raises(ValueError, match='python'):
+        anki_with_words.get_translation('PYTHON')
+        pytest.fail('Для отсутствующего слова должна быть ошибка ValueError')
+
+
+@pytest.mark.parametrize(
+    'word, translation, expected', [
+        ('hello', 'привет', True),
+        (' HELLO ', '  ПРИВЕТ ', True),
+        ('hello', 'мир', False),
+        ('world', '', False),
+    ]
+)
+def test_check_translation(
+    anki_with_words: Anki, word: str, translation: str, expected: bool
+) -> None:
+    """Метод check_translation сравнивает нормализованные значения."""
+    assert anki_with_words.check_translation(word, translation) is expected
+
+
+def test_check_translation_raises_ValueError_for_missing_word(
+    anki_with_words: Anki,
+) -> None:
+    """Метод check_translation выбрасывает ValueError для чужого слова."""
+    with pytest.raises(ValueError):
+        anki_with_words.check_translation('python', 'питон')
+        pytest.fail('Для отсутствующего слова должна быть ошибка ValueError')

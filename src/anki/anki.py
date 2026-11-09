@@ -1,5 +1,7 @@
 """Основная логика игры Anki: хранение слов и их нормализация."""
 
+import random
+
 from typing import Optional
 
 
@@ -114,3 +116,53 @@ class Anki:
             Колода Anki, слов в колоде: 2
         """
         return f'Колода Anki, слов в колоде: {len(self._words)}'
+
+    def get_random_word(self) -> str:
+        """Выбирает случайное слово из игры.
+
+        Returns:
+            Случайное слово (без перевода).
+
+        Raises:
+            ValueError: Если в игре нет ни одного слова.
+        """
+        if not self._words:
+            raise ValueError('В игре нет слов. Сначала добавьте слова.')
+        return random.choice(list(self._words))
+
+    def get_translation(self, word: str) -> str:
+        """Возвращает перевод слова.
+
+        Args:
+            word: Слово, перевод которого нужен. Нормализуется
+                перед поиском.
+
+        Returns:
+            Перевод слова.
+
+        Raises:
+            ValueError: Если word не строка или такого слова нет в игре.
+        """
+        normalized_word = self.normalize_word(word)
+        if normalized_word not in self._words:
+            raise ValueError(f'Слова «{normalized_word}» нет в игре')
+        return self._words[normalized_word]
+
+    def check_translation(self, word: str, translation: str) -> bool:
+        """Проверяет перевод, который дал пользователь.
+
+        Слово и перевод нормализуются, поэтому регистр и пробелы
+        по краям не важны.
+
+        Args:
+            word: Слово, которое переводил пользователь.
+            translation: Перевод, который ввёл пользователь.
+
+        Returns:
+            True, если перевод правильный, иначе False.
+
+        Raises:
+            ValueError: Если word или translation не строка
+                или слова нет в игре.
+        """
+        return self.get_translation(word) == self.normalize_word(translation)
