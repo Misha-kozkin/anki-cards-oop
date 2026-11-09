@@ -1,29 +1,40 @@
-"""Загрузка и сохранение слов игры Anki в текстовом файле."""
+"""Загрузчики слов игры Anki: текстовый, TSV и JSON форматы."""
 
+import json
 from pathlib import Path
-from typing import Union
+from typing import ClassVar, Optional, TextIO, Union
 
 
-class TextFileLoader:
-    """Читает и записывает словарь игры в текстовый файл.
+class BaseFileLoader:
+    """Общая логика загрузки и сохранения слов в файле.
 
-    Формат файла: одна пара на строку, слово и перевод разделены
-    запятой без пробелов, например «кот,cat». Файл читается
-    и записывается в кодировке UTF-8.
+    Базовый класс открывает и закрывает файл, проверяет путь
+    и аргументы. Как именно слова записаны внутри файла, решают
+    наследники: они переопределяют методы _load_from_file
+    и _save_to_file.
+
+    Attributes:
+        DEFAULT_FILE_PATH: Путь к файлу, если он не передан
+            при создании загрузчика.
     """
 
+    DEFAULT_FILE_PATH: ClassVar[str] = './words.txt'
+
     def __init__(
-        self, *, file_path: Union[str, Path] = './words.txt'
+        self, *, file_path: Optional[Union[str, Path]] = None
     ) -> None:
         """Запоминает путь к файлу со словами.
 
         Args:
-            file_path: Путь к файлу. Файл может ещё не существовать,
-                он будет создан при сохранении.
+            file_path: Путь к файлу. Если не передан, используется
+                DEFAULT_FILE_PATH класса. Файл может ещё не
+                существовать, он будет создан при сохранении.
 
         Raises:
             ValueError: Если file_path указывает на директорию.
         """
+        if file_path is None:
+            file_path = self.DEFAULT_FILE_PATH
         path = Path(file_path)
         if path.is_dir():
             raise ValueError(
@@ -32,29 +43,20 @@ class TextFileLoader:
         self._file_path: Path = path
 
     def load_words(self) -> dict[str, str]:
-        """Читает пары «слово,перевод» из файла.
-
-        Строки без запятой или с лишними запятыми пропускаются.
-        Слова возвращаются в том виде, в каком записаны в файле.
+        """Читает слова из файла.
 
         Returns:
             Словарь {слово: перевод}. Если файла нет,
             возвращается пустой словарь.
         """
-        words: dict[str, str] = {}
         try:
             with self._file_path.open(encoding='utf-8') as file:
-                for line in file:
-                    parts = line.strip().split(',')
-                    if len(parts) == 2:
-                        word, translation = parts
-                        words[word] = translation
+                return self._load_from_file(file)
         except FileNotFoundError:
             return {}
-        return words
 
     def save_words(self, words: dict[str, str]) -> None:
-        """Перезаписывает файл парами из словаря.
+        """Перезаписывает файл словами из словаря.
 
         Старое содержимое файла удаляется. Если файла нет,
         он создаётся.
@@ -68,5 +70,117 @@ class TextFileLoader:
         if not isinstance(words, dict):
             raise ValueError('Параметр words должен быть словарём')
         with self._file_path.open('w', encoding='utf-8') as file:
-            for word, translation in words.items():
-                file.write(word + ',' + translation + '\n')
+            self._save_to_file(words, file)
+
+    def _load_from_file(self, file_object: TextIO) -> dict[str, str]:
+        """Читает слова из открытого файла в формате наследника.
+
+        Args:
+            file_object: Файл, открытый на чтение.
+
+        Returns:
+            Словарь {слово: перевод}.
+
+        Raises:
+            NotImplementedError: Если наследник не переопределил метод.
+        """
+        raise NotImplementedError
+
+    def _save_to_file(
+        self, words: dict[str, str], file_object: TextIO
+    ) -> None:
+        """Записывает слова в открытый файл в формате наследника.
+
+        Args:
+            words: Словарь {слово: перевод}.
+            file_object: Файл, открытый на запись.
+
+        Raises:
+            NotImplementedError: Если наследник не переопределил метод.
+        """
+        raise NotImplementedError
+
+
+class TextFileLoader(BaseFileLoader):
+    """Хранит слова в текстовом файле, по паре на строку.
+
+    Формат строки: «слово,перевод». Строки без запятой или
+    с несколькими запятыми при загрузке пропускаются.
+    """
+
+    DEFAULT_FILE_PATH: ClassVar[str] = './words.txt'
+
+    def _load_from_file(self, file_object: TextIO) -> dict[str, str]:
+        """Читает строки «слово,перевод», пропуская неверные."""
+        words: dict[str, str] = {}
+        for line in file_object:
+            parts = line.strip().split(',')
+            if len(parts) == 2:
+                word, translation = parts
+                words[word] = translation
+        return words
+
+    def _save_to_file(
+        self, words: dict[str, str], file_object: TextIO
+    ) -> None:
+        """Записывает каждую пару строкой «слово,перевод»."""
+        for word, translation in words.items():
+            file_object.write(word + ',' + translation + '\n')
+
+
+class TSVFileLoader(BaseFileLoader):
+    """Хранит слова в TSV-файле: слово и перевод разделены табуляцией.
+
+    Строки без табуляции или с несколькими табуляциями
+    при загрузке пропускаются.
+    """
+
+    DEFAULT_FILE_PATH: ClassVar[str] = './words.tsv'
+
+    def _load_from_file(self, file_object: TextIO) -> dict[str, str]:
+        """Читает строки «слово<TAB>перевод», пропуская неверные."""
+        words: dict[str, str] = {}
+        for line in file_object:
+            parts = line.strip().split('\t')
+            if len(parts) == 2:
+                word, translation = parts
+                words[word] = translation
+        return words
+
+    def _save_to_file(
+        self, words: dict[str, str], file_object: TextIO
+    ) -> None:
+        """Записывает каждую пару строкой «слово<TAB>перевод»."""
+        for word, translation in words.items():
+            file_object.write(f'{word}\t{translation}\n')
+
+
+class JsonFileLoader(BaseFileLoader):
+    """Хранит слова в JSON-файле как один объект {слово: перевод}."""
+
+    DEFAULT_FILE_PATH: ClassVar[str] = './words.json'
+
+    def _load_from_file(self, file_object: TextIO) -> dict[str, str]:
+        """Читает JSON-объект со словами.
+
+        Args:
+            file_object: Файл, открытый на чтение.
+
+        Returns:
+            Словарь {слово: перевод}.
+
+        Raises:
+            ValueError: Если в файле некорректный JSON или не объект.
+        """
+        data = json.load(file_object)
+        if not isinstance(data, dict):
+            raise ValueError(
+                'В JSON-файле должен быть объект {слово: перевод}'
+            )
+        return data
+
+    def _save_to_file(
+        self, words: dict[str, str], file_object: TextIO
+    ) -> None:
+        """Записывает слова как JSON с отступом 2 и кириллицей как есть."""
+        json.dump(words, file_object, indent=2, ensure_ascii=False)
