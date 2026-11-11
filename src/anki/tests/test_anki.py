@@ -108,7 +108,7 @@ def test_anki_add_word_raises_ValueError_on_invalid_input(
             'Метод `add_word` должен выдавать ValueError,'
             ' если word или translation не строка'
         )
-    assert anki.get_words() == {}, (
+    assert anki.words == {}, (
         'После ошибки в `add_word` словарь не должен меняться'
     )
 

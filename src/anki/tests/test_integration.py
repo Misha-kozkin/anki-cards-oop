@@ -12,13 +12,13 @@ def test_integration(words_file: Path) -> None:
     words = loader.load_words()
 
     anki = Anki(words=words)
-    assert anki.get_words() == {'hello': 'привет', 'world': 'мир'}
+    assert anki.words == {'hello': 'привет', 'world': 'мир'}
 
     anki.add_word('  PyThOn ', ' Питон ')
-    loader.save_words(anki.get_words())
+    loader.save_words(anki.words)
 
     lines = words_file.read_text(encoding='utf-8').splitlines()
     assert sorted(lines) == ['hello,привет', 'python,питон', 'world,мир']
     assert TextFileLoader(file_path=words_file).load_words() == (
-        anki.get_words()
+        anki.words
     )

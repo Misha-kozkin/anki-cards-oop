@@ -31,7 +31,7 @@ def test_add_words_adds_valid_pairs_and_skips_invalid(
     answers = fake_input(['Cat', ' Кот ', 'а,б', 'в', '', 'x', 'стоп'])
     monkeypatch.setattr('builtins.input', lambda prompt='': next(answers))
     TextUI(anki).add_words()
-    assert anki.get_words() == {'cat': 'кот'}
+    assert anki.words == {'cat': 'кот'}
 
 
 def test_start_game_reports_empty_game(

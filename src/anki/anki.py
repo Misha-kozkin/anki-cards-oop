@@ -26,13 +26,8 @@ class Anki:
             ValueError: Если words не словарь или в нём есть
                 ключи или значения, которые не являются строками.
         """
-        if words is None:
-            words = {}
-        if not isinstance(words, dict):
-            raise ValueError('Параметр words должен быть словарём')
         self._words: dict[str, str] = {}
-        for word, translation in words.items():
-            self.add_word(word, translation)
+        self.words = words if words is not None else {}
 
     @staticmethod
     def normalize_word(word: str) -> str:
@@ -53,6 +48,49 @@ class Anki:
             )
         return word.strip().lower()
 
+    def _normalize_dict(self, words: dict[str, str]) -> dict[str, str]:
+        """Возвращает новый словарь с нормализованными словами.
+
+        Args:
+            words: Словарь {слово: перевод}.
+
+        Returns:
+            Новый словарь, где ключи и значения нормализованы.
+
+        Raises:
+            ValueError: Если words не словарь или в нём есть
+                ключи или значения, которые не являются строками.
+        """
+        if not isinstance(words, dict):
+            raise ValueError('Слова должны быть словарём')
+        return {
+            self.normalize_word(word): self.normalize_word(translation)
+            for word, translation in words.items()
+        }
+
+    @property
+    def words(self) -> dict[str, str]:
+        """Копия словаря {слово: перевод}.
+
+        Изменение полученного словаря не влияет на игру. Чтобы
+        заменить все слова, присвойте свойству новый словарь.
+        Чтобы добавить одно слово, используйте add_word.
+        """
+        return self._words.copy()
+
+    @words.setter
+    def words(self, value: dict[str, str]) -> None:
+        """Заменяет все слова игры новыми после нормализации.
+
+        Args:
+            value: Новый словарь {слово: перевод}.
+
+        Raises:
+            ValueError: Если value не словарь или в нём есть
+                ключи или значения не строки.
+        """
+        self._words = self._normalize_dict(value)
+
     def add_word(self, word: str, translation: str) -> None:
         """Добавляет в словарь слово и его перевод.
 
@@ -69,17 +107,6 @@ class Anki:
         normalized_word = self.normalize_word(word)
         normalized_translation = self.normalize_word(translation)
         self._words[normalized_word] = normalized_translation
-
-    def get_words(self) -> dict[str, str]:
-        """Возвращает копию словаря со словами.
-
-        Изменение возвращённого словаря не влияет на слова игры.
-        Чтобы добавить слово, используйте add_word.
-
-        Returns:
-            Новый словарь {слово: перевод}.
-        """
-        return self._words.copy()
 
     def __contains__(self, word: str) -> bool:
         """Проверяет, есть ли слово в игре (оператор in).
