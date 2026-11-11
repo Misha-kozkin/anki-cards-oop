@@ -90,8 +90,9 @@ class TextUI:
             self._anki_game.add_word(word, translation)
 
     def show_words(self) -> None:
-        """Выводит все слова игры, каждое в формате «слово - перевод»."""
-        for word, translation in self._anki_game.get_words().items():
+        """Выводит количество слов и все пары «слово - перевод»."""
+        print(f'Всего слов: {len(self._anki_game)}')
+        for word, translation in self._anki_game:
             print(f'{word} - {translation}')
 
     def main_loop(self) -> None:

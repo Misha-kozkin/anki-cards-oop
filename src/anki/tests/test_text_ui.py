@@ -16,11 +16,11 @@ def fake_input(answers: list[str]) -> Iterator[str]:
 def test_show_words_prints_each_pair_on_own_line(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Метод show_words печатает каждую пару в отдельной строке."""
+    """Метод show_words печатает количество слов и пары по строке."""
     ui = TextUI(Anki(words={'cat': 'кот', 'dog': 'собака'}))
     ui.show_words()
     lines = capsys.readouterr().out.splitlines()
-    assert lines == ['cat - кот', 'dog - собака']
+    assert lines == ['Всего слов: 2', 'cat - кот', 'dog - собака']
 
 
 def test_add_words_adds_valid_pairs_and_skips_invalid(

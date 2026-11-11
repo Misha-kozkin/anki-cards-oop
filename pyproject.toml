@@ -12,10 +12,16 @@ description = "Игра Карты Anki"
 readme = "README.md"
 requires-python = ">=3.9"
 
+dependencies = [
+	"requests"
+]
+
+
 [project.optional-dependencies]
 dev = [
 	"pytest",
-	"mypy"
+	"mypy",
+	"types-requests"
 ]
 
 

@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import ClassVar, Optional, TextIO, Union
 
+import requests
+
 
 class BaseFileLoader:
     """Общая логика загрузки и сохранения слов в файле.
@@ -184,3 +186,50 @@ class JsonFileLoader(BaseFileLoader):
     ) -> None:
         """Записывает слова как JSON с отступом 2 и кириллицей как есть."""
         json.dump(words, file_object, indent=2, ensure_ascii=False)
+
+
+class JsonNetworkLoader:
+    """Загружает слова из JSON-объекта по HTTP-ссылке.
+
+    Не наследуется от BaseFileLoader, но имеет те же методы
+    load_words и save_words, поэтому игра может использовать
+    его вместо файлового загрузчика.
+
+    Attributes:
+        url: Адрес, по которому лежит JSON со словами.
+    """
+
+    def __init__(self, url: str) -> None:
+        """Запоминает адрес источника слов.
+
+        Args:
+            url: Ссылка на JSON-объект {слово: перевод}.
+        """
+        self.url = url
+
+    def load_words(self) -> dict[str, str]:
+        """Скачивает слова по ссылке из атрибута url.
+
+        Returns:
+            Словарь {слово: перевод}.
+
+        Raises:
+            requests.RequestException: Если сервер недоступен
+                или ответил ошибкой.
+            ValueError: Если в ответе не JSON-объект.
+        """
+        response = requests.get(self.url)
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, dict):
+            raise ValueError(
+                'По ссылке должен быть JSON-объект {слово: перевод}'
+            )
+        return data
+
+    def save_words(self, words: dict[str, str]) -> None:
+        """Ничего не делает: сохранять слова по ссылке нельзя.
+
+        Args:
+            words: Словарь {слово: перевод}. Не используется.
+        """
