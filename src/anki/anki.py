@@ -1,17 +1,26 @@
-"""Основная логика игры Anki: хранение слов и их нормализация."""
+"""Основная логика игры Anki: слова, проверка переводов, тренировка."""
 
 import random
+import time
 from collections.abc import Iterator
-from typing import Optional
+from typing import Optional, Union
 
 
 class Anki:
     """Хранит словарь игры и следит за единым форматом слов.
 
-    Все слова и переводы хранятся нормализованными: без пробелов
-    по краям и в нижнем регистре. Класс не зависит от способа
-    ввода-вывода и источника слов, поэтому его можно использовать
-    в консольной, графической или веб-версии игры.
+    Инвариант класса: все слова и переводы в словаре нормализованы,
+    то есть без пробелов по краям и в нижнем регистре. Все способы
+    изменить слова (инициализатор, свойство words, add_word)
+    проходят через нормализацию.
+
+    Класс также ведёт тренировку до первой ошибки: считает
+    правильные ответы и время и не даёт «накрутить» счёт.
+
+    Attributes:
+        last_session_stats: Итоги последней тренировки: количество
+            правильных ответов (correct_answers) и время в секундах
+            (total_time).
     """
 
     def __init__(self, *, words: Optional[dict[str, str]] = None) -> None:
@@ -26,21 +35,36 @@ class Anki:
             ValueError: Если words не словарь или в нём есть
                 ключи или значения, которые не являются строками.
         """
+        self._session_active = False
+        self._session_start_time = 0.0
+        self._session_user_score = 0
+        self._last_word: Optional[str] = None
+        self.last_session_stats: dict[str, Union[int, float]] = {
+            'correct_answers': 0,
+            'total_time': 0.0,
+        }
         self._words: dict[str, str] = {}
         self.words = words if words is not None else {}
 
     @staticmethod
     def normalize_word(word: str) -> str:
-        """Убирает пробелы по краям и приводит слово к нижнему регистру.
+        """Приводит слово к внутреннему формату игры.
+
+        Убирает пробельные символы по краям и переводит все
+        буквы в нижний регистр.
 
         Args:
-            word: Слово для нормализации.
+            word: Слово или перевод для нормализации.
 
         Returns:
-            Нормализованное слово.
+            Нормализованная строка.
 
         Raises:
             ValueError: Если word не является строкой.
+
+        Examples:
+            >>> Anki.normalize_word('  PyThOn  ')
+            'python'
         """
         if not isinstance(word, str):
             raise ValueError(
@@ -86,9 +110,11 @@ class Anki:
             value: Новый словарь {слово: перевод}.
 
         Raises:
-            ValueError: Если value не словарь или в нём есть
-                ключи или значения не строки.
+            ValueError: Если идёт тренировка, если value не словарь
+                или в нём есть ключи или значения не строки.
         """
+        if self._session_active:
+            raise ValueError('Нельзя заменить все слова во время тренировки')
         self._words = self._normalize_dict(value)
 
     def add_word(self, word: str, translation: str) -> None:
@@ -132,18 +158,6 @@ class Anki:
         """
         return self.normalize_word(word) in self._words
 
-    def __str__(self) -> str:
-        """Возвращает описание колоды для print() и str().
-
-        Returns:
-            Строка с количеством слов в колоде.
-
-        Examples:
-            >>> print(Anki(words={'cat': 'кот', 'dog': 'собака'}))
-            Колода Anki, слов в колоде: 2
-        """
-        return f'Колода Anki, слов в колоде: {len(self._words)}'
-
     def __iter__(self) -> Iterator[tuple[str, str]]:
         """Позволяет перебирать игру в цикле for.
 
@@ -169,8 +183,23 @@ class Anki:
         """
         return len(self._words)
 
+    def __str__(self) -> str:
+        """Возвращает описание колоды для print() и str().
+
+        Returns:
+            Строка с количеством слов в колоде.
+
+        Examples:
+            >>> print(Anki(words={'cat': 'кот', 'dog': 'собака'}))
+            Колода Anki, слов в колоде: 2
+        """
+        return f'Колода Anki, слов в колоде: {len(self._words)}'
+
     def get_random_word(self) -> str:
-        """Выбирает случайное слово из игры.
+        """Выбирает случайное слово из игры и запоминает его.
+
+        Во время тренировки проверить перевод можно только
+        у последнего выданного слова.
 
         Returns:
             Случайное слово (без перевода).
@@ -180,7 +209,9 @@ class Anki:
         """
         if not self._words:
             raise ValueError('В игре нет слов. Сначала добавьте слова.')
-        return random.choice(list(self._words))
+        word = random.choice(list(self._words))
+        self._last_word = word
+        return word
 
     def get_translation(self, word: str) -> str:
         """Возвращает перевод слова.
@@ -204,7 +235,8 @@ class Anki:
         """Проверяет перевод, который дал пользователь.
 
         Слово и перевод нормализуются, поэтому регистр и пробелы
-        по краям не важны.
+        по краям не важны. Во время тренировки правильный ответ
+        добавляет очко, а неправильный завершает тренировку.
 
         Args:
             word: Слово, которое переводил пользователь.
@@ -214,7 +246,53 @@ class Anki:
             True, если перевод правильный, иначе False.
 
         Raises:
-            ValueError: Если word или translation не строка
-                или слова нет в игре.
+            ValueError: Если word или translation не строка, слова
+                нет в игре или, во время тренировки, word не последнее
+                выданное слово (тогда тренировка завершается).
         """
-        return self.get_translation(word) == self.normalize_word(translation)
+        if self._session_active:
+            if self.normalize_word(word) != self._last_word:
+                self.end_session()
+                raise ValueError(
+                    'Проверить можно только последнее выданное слово'
+                )
+            self._last_word = None
+        is_correct = (
+            self.get_translation(word) == self.normalize_word(translation)
+        )
+        if self._session_active:
+            if is_correct:
+                self._session_user_score += 1
+            else:
+                self.end_session()
+        return is_correct
+
+    def start_session(self) -> None:
+        """Начинает тренировку до первой ошибки.
+
+        Raises:
+            RuntimeError: Если тренировка уже идёт.
+        """
+        if self._session_active:
+            raise RuntimeError('Тренировка уже идёт')
+        self._session_active = True
+        self._session_start_time = time.time()
+        self._session_user_score = 0
+        self._last_word = None
+
+    def end_session(self) -> None:
+        """Завершает тренировку и сохраняет её итоги в last_session_stats.
+
+        Raises:
+            RuntimeError: Если тренировка не идёт.
+        """
+        if not self._session_active:
+            raise RuntimeError('Нельзя завершить тренировку, она не идёт')
+        self.last_session_stats = {
+            'correct_answers': self._session_user_score,
+            'total_time': time.time() - self._session_start_time,
+        }
+        self._session_active = False
+        self._session_start_time = 0.0
+        self._session_user_score = 0
+        self._last_word = None

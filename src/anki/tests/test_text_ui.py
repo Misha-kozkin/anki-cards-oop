@@ -50,3 +50,37 @@ def test_main_loop_stops_on_exit_and_reports_unknown_choice(
     monkeypatch.setattr('builtins.input', lambda prompt='': next(answers))
     TextUI(Anki()).main_loop()
     assert 'Неизвестный пункт меню' in capsys.readouterr().out
+
+
+def test_train_until_mistake_counts_answers_until_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Тренировка идёт до первой ошибки и показывает итоги."""
+    anki = Anki(words={'cat': 'кот'})
+    answers = fake_input(['кот', 'Кот ', 'dog'])
+    monkeypatch.setattr('builtins.input', lambda prompt='': next(answers))
+    TextUI(anki).train_until_mistake()
+    output = capsys.readouterr().out
+    assert 'Правильных ответов: 2' in output
+    assert 'Правильный ответ: кот' in output
+
+
+def test_train_until_mistake_stop_word_ends_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """После выхода по STOP_WORD можно начать новую тренировку."""
+    anki = Anki(words={'cat': 'кот'})
+    answers = fake_input(['стоп'])
+    monkeypatch.setattr('builtins.input', lambda prompt='': next(answers))
+    TextUI(anki).train_until_mistake()
+    anki.start_session()
+
+
+def test_train_until_mistake_with_empty_game(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Пустая игра не ломает тренировку и не оставляет её активной."""
+    anki = Anki()
+    TextUI(anki).train_until_mistake()
+    assert 'нет слов' in capsys.readouterr().out
+    anki.start_session()

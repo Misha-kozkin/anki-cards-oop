@@ -1,9 +1,8 @@
 """Тесты класса Anki."""
 
+import time
 from typing import Any
-
 import pytest
-
 from anki.anki import Anki
 
 
@@ -247,3 +246,103 @@ def test_empty_anki_is_falsy() -> None:
     """Пустая игра считается ложной в if благодаря __len__."""
     assert not Anki()
     assert Anki(words={'cat': 'кот'})
+
+
+def test_words_property_returns_copy(anki_with_words: Anki) -> None:
+    """Изменение словаря из свойства words не меняет игру."""
+    words = anki_with_words.words
+    words['HACK'] = 'ВЗЛОМ'
+    assert 'hack' not in anki_with_words
+    assert anki_with_words.words == {'hello': 'привет', 'world': 'мир'}
+
+
+def test_words_setter_normalizes_new_words(anki_with_words: Anki) -> None:
+    """Сеттер words заменяет все слова и нормализует их."""
+    anki_with_words.words = {' WORLD ': 'МИР'}
+    assert anki_with_words.words == {'world': 'мир'}
+
+
+@pytest.mark.parametrize('invalid_words', [[], 'abc', {1: 'один'}])
+def test_words_setter_keeps_old_words_on_error(
+    anki_with_words: Anki, invalid_words: Any
+) -> None:
+    """При ошибке в сеттере старые слова остаются нетронутыми."""
+    with pytest.raises(ValueError):
+        anki_with_words.words = invalid_words
+        pytest.fail('Сеттер words должен выдавать ValueError')
+    assert anki_with_words.words == {'hello': 'привет', 'world': 'мир'}
+
+
+def test_session_counts_correct_answers_until_mistake(
+    anki_with_words: Anki,
+) -> None:
+    """Правильные ответы дают очки, ошибка завершает тренировку."""
+    anki_with_words.start_session()
+    for _ in range(2):
+        word = anki_with_words.get_random_word()
+        translation = anki_with_words.get_translation(word)
+        assert anki_with_words.check_translation(word, translation)
+    word = anki_with_words.get_random_word()
+    assert not anki_with_words.check_translation(word, 'неверно')
+    assert anki_with_words.last_session_stats['correct_answers'] == 2
+    anki_with_words.start_session()
+
+
+def test_session_measures_total_time(
+    anki_with_words: Anki, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Время тренировки — разница между началом и концом."""
+    moments = iter([100.0, 107.5])
+    monkeypatch.setattr(time, 'time', lambda: next(moments))
+    anki_with_words.start_session()
+    anki_with_words.end_session()
+    assert anki_with_words.last_session_stats['total_time'] == 7.5
+
+
+def test_session_rejects_not_last_word(anki_with_words: Anki) -> None:
+    """Во время тренировки нельзя проверять не последнее выданное слово."""
+    anki_with_words.start_session()
+    word = anki_with_words.get_random_word()
+    other = 'world' if word == 'hello' else 'hello'
+    with pytest.raises(ValueError, match='последнее'):
+        anki_with_words.check_translation(other, 'перевод')
+        pytest.fail('Проверка чужого слова должна выдавать ValueError')
+    anki_with_words.start_session()
+
+
+def test_session_rejects_second_check_of_same_word(
+    anki_with_words: Anki,
+) -> None:
+    """Повторно проверить то же слово без нового get_random_word нельзя."""
+    anki_with_words.start_session()
+    word = anki_with_words.get_random_word()
+    translation = anki_with_words.get_translation(word)
+    anki_with_words.check_translation(word, translation)
+    with pytest.raises(ValueError):
+        anki_with_words.check_translation(word, translation)
+        pytest.fail('Повторная проверка должна выдавать ValueError')
+
+
+def test_session_blocks_words_setter_but_allows_add_word(
+    anki_with_words: Anki,
+) -> None:
+    """Во время тренировки нельзя заменить все слова, но можно добавить."""
+    anki_with_words.start_session()
+    with pytest.raises(ValueError, match='тренировки'):
+        anki_with_words.words = {'new': 'новый'}
+        pytest.fail('Замена слов во время тренировки должна быть запрещена')
+    anki_with_words.add_word('python', 'питон')
+    assert 'python' in anki_with_words
+    anki_with_words.end_session()
+    anki_with_words.words = {'new': 'новый'}
+    assert anki_with_words.words == {'new': 'новый'}
+
+
+@pytest.mark.parametrize('method', ['start_session', 'end_session'])
+def test_session_state_errors(anki_with_words: Anki, method: str) -> None:
+    """Нельзя начать идущую тренировку и завершить неначатую."""
+    if method == 'start_session':
+        anki_with_words.start_session()
+    with pytest.raises(RuntimeError):
+        getattr(anki_with_words, method)()
+        pytest.fail(f'{method} должен выдавать RuntimeError')

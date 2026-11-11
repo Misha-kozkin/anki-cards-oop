@@ -67,6 +67,40 @@ class TextUI:
                 correct = self._anki_game.get_translation(word)
                 print(f'Неправильно, правильный ответ: {correct}')
 
+    def train_until_mistake(self) -> None:
+        """Тренировка до первой ошибки или до ввода STOP_WORD.
+
+        В конце выводит количество правильных ответов и время игры.
+        """
+        print(
+            'Режим: игра до первой ошибки! '
+            f'Чтобы выйти вручную, введите {self.STOP_WORD}'
+        )
+        self._anki_game.start_session()
+        while True:
+            try:
+                word = self._anki_game.get_random_word()
+            except ValueError as error:
+                print(error)
+                self._anki_game.end_session()
+                break
+            print(f'Ваше слово: {word}')
+            answer = input('Ваш перевод: ')
+            if self._is_stop_word(answer):
+                self._anki_game.end_session()
+                print('Выход из режима по запросу пользователя.')
+                break
+            if self._anki_game.check_translation(word, answer):
+                print('Верно!')
+            else:
+                correct = self._anki_game.get_translation(word)
+                print(f'Ошибка! Правильный ответ: {correct}')
+                break
+        stats = self._anki_game.last_session_stats
+        total_time = format(stats['total_time'], '.2f')
+        print(f'Правильных ответов: {stats["correct_answers"]}')
+        print(f'Время игры: {total_time} секунд')
+
     def add_words(self) -> None:
         """Добавляет слова в игру, пока пользователь не введёт STOP_WORD.
 
@@ -105,7 +139,7 @@ class TextUI:
             elif choice == '2':
                 self.add_words()
             elif choice == '3':
-                print('Данная функциональность ещё не реализована')
+                self.train_until_mistake()
             elif choice == '4':
                 self.show_words()
             elif choice == '5':
