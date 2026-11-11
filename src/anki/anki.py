@@ -1,7 +1,7 @@
 """Основная логика игры Anki: хранение слов и их нормализация."""
 
 import random
-
+from collections.abc import Iterator
 from typing import Optional
 
 
@@ -116,6 +116,31 @@ class Anki:
             Колода Anki, слов в колоде: 2
         """
         return f'Колода Anki, слов в колоде: {len(self._words)}'
+
+    def __iter__(self) -> Iterator[tuple[str, str]]:
+        """Позволяет перебирать игру в цикле for.
+
+        Returns:
+            Итератор по парам (слово, перевод).
+
+        Examples:
+            >>> for word, translation in Anki(words={'cat': 'кот'}):
+            ...     print(word, '-', translation)
+            cat - кот
+        """
+        return iter(self._words.items())
+
+    def __len__(self) -> int:
+        """Возвращает количество слов в игре для len().
+
+        Returns:
+            Число пар «слово - перевод».
+
+        Examples:
+            >>> len(Anki(words={'cat': 'кот', 'dog': 'собака'}))
+            2
+        """
+        return len(self._words)
 
     def get_random_word(self) -> str:
         """Выбирает случайное слово из игры.

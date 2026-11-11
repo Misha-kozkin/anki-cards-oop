@@ -219,3 +219,31 @@ def test_check_translation_raises_ValueError_for_missing_word(
     with pytest.raises(ValueError):
         anki_with_words.check_translation('python', 'питон')
         pytest.fail('Для отсутствующего слова должна быть ошибка ValueError')
+
+
+def test_anki_iterates_over_word_translation_pairs(
+    anki_with_words: Anki,
+) -> None:
+    """Цикл for по игре выдаёт пары (слово, перевод)."""
+    assert list(anki_with_words) == [('hello', 'привет'), ('world', 'мир')]
+
+
+@pytest.mark.parametrize(
+    'words, expected', [
+        ({}, 0),
+        ({'cat': 'кот'}, 1),
+        ({'Cat': 'кот', 'cat': 'кошка'}, 1),
+    ],
+    ids=['empty', 'one', 'duplicates_after_normalization'],
+)
+def test_len_returns_number_of_words(
+    words: dict[str, str], expected: int
+) -> None:
+    """Функция len() возвращает число уникальных нормализованных слов."""
+    assert len(Anki(words=words)) == expected
+
+
+def test_empty_anki_is_falsy() -> None:
+    """Пустая игра считается ложной в if благодаря __len__."""
+    assert not Anki()
+    assert Anki(words={'cat': 'кот'})
