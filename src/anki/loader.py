@@ -2,9 +2,81 @@
 
 import json
 from pathlib import Path
-from typing import ClassVar, Optional, TextIO, Union
+from typing import Callable, ClassVar, Optional, TextIO, TypeVar, Union
 
 import requests
+
+LoaderClass = TypeVar('LoaderClass', bound=type)
+
+
+class LoaderRegistry:
+    """Реестр загрузчиков: связывает идентификатор источника с классом.
+
+    Новый загрузчик регистрируется декоратором register, поэтому
+    для поддержки нового формата не нужно менять код выбора
+    загрузчика.
+
+    Examples:
+        >>> registry = LoaderRegistry()
+        >>> @registry.register('.csv')
+        ... class CsvLoader:
+        ...     pass
+        >>> registry.get_loader('.csv') is CsvLoader
+        True
+    """
+
+    def __init__(self) -> None:
+        """Создаёт пустой реестр."""
+        self._registry: dict[str, type] = {}
+
+    def register(
+        self, ident: str
+    ) -> Callable[[LoaderClass], LoaderClass]:
+        """Создаёт декоратор, который регистрирует класс загрузчика.
+
+        Args:
+            ident: Идентификатор источника, например '.txt' или 'http'.
+
+        Returns:
+            Декоратор. Он запоминает класс в реестре и возвращает
+            этот же класс без изменений.
+        """
+        def decorator(cls: LoaderClass) -> LoaderClass:
+            self._registry[ident] = cls
+            return cls
+
+        return decorator
+
+    def __contains__(self, ident: str) -> bool:
+        """Проверяет, зарегистрирован ли загрузчик (оператор in).
+
+        Args:
+            ident: Идентификатор источника.
+
+        Returns:
+            True, если для ident есть загрузчик.
+        """
+        return ident in self._registry
+
+    def get_loader(self, ident: str) -> type:
+        """Возвращает класс загрузчика по идентификатору.
+
+        Args:
+            ident: Идентификатор источника, например '.txt' или 'http'.
+
+        Returns:
+            Зарегистрированный класс загрузчика.
+
+        Raises:
+            ValueError: Если для ident ничего не зарегистрировано.
+        """
+        loader_cls = self._registry.get(ident)
+        if loader_cls is None:
+            raise ValueError(f'Неизвестный тип источника слов: {ident}')
+        return loader_cls
+
+
+loader_registry = LoaderRegistry()
 
 
 class BaseFileLoader:
@@ -103,6 +175,7 @@ class BaseFileLoader:
         raise NotImplementedError
 
 
+@loader_registry.register('.txt')
 class TextFileLoader(BaseFileLoader):
     """Хранит слова в текстовом файле, по паре на строку.
 
@@ -130,6 +203,7 @@ class TextFileLoader(BaseFileLoader):
             file_object.write(word + ',' + translation + '\n')
 
 
+@loader_registry.register('.tsv')
 class TSVFileLoader(BaseFileLoader):
     """Хранит слова в TSV-файле: слово и перевод разделены табуляцией.
 
@@ -157,6 +231,7 @@ class TSVFileLoader(BaseFileLoader):
             file_object.write(f'{word}\t{translation}\n')
 
 
+@loader_registry.register('.json')
 class JsonFileLoader(BaseFileLoader):
     """Хранит слова в JSON-файле как один объект {слово: перевод}."""
 
@@ -188,6 +263,7 @@ class JsonFileLoader(BaseFileLoader):
         json.dump(words, file_object, indent=2, ensure_ascii=False)
 
 
+@loader_registry.register('http')
 class JsonNetworkLoader:
     """Загружает слова из JSON-объекта по HTTP-ссылке.
 

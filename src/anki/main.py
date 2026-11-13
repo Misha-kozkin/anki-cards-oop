@@ -8,31 +8,20 @@ from typing import Union
 import requests
 
 from anki.anki import Anki
-from anki.loader import (
-    BaseFileLoader,
-    JsonFileLoader,
-    JsonNetworkLoader,
-    TextFileLoader,
-    TSVFileLoader,
-)
+from anki.loader import BaseFileLoader, JsonNetworkLoader, loader_registry
 from anki.ui import TextUI
 
 WORDS_FILE = Path(__file__).parent / 'words.txt'
-
-FILE_LOADERS: dict[str, type[BaseFileLoader]] = {
-    '.txt': TextFileLoader,
-    '.tsv': TSVFileLoader,
-    '.json': JsonFileLoader,
-}
 
 Loader = Union[BaseFileLoader, JsonNetworkLoader]
 
 
 def get_loader(source: str) -> Loader:
-    """Выбирает загрузчик слов по источнику.
+    """Создаёт загрузчик слов, подходящий для источника.
 
-    Ссылка, начинающаяся с http:// или https://, загружается
-    по сети. Для файла загрузчик выбирается по расширению.
+    Ссылка, начинающаяся с http:// или https://, ищется в реестре
+    по идентификатору 'http'. Для файла идентификатор — его
+    расширение, например '.txt'.
 
     Args:
         source: Путь к файлу со словами или ссылка на JSON.
@@ -41,15 +30,16 @@ def get_loader(source: str) -> Loader:
         Загрузчик с методами load_words и save_words.
 
     Raises:
-        ValueError: Если тип источника неизвестен.
+        ValueError: Если для источника нет зарегистрированного загрузчика.
     """
     if source.startswith(('http://', 'https://')):
-        return JsonNetworkLoader(source)
-    path = Path(source)
-    loader_cls = FILE_LOADERS.get(path.suffix.lower())
-    if loader_cls is None:
+        loader_cls = loader_registry.get_loader('http')
+        return loader_cls(url=source)
+    suffix = Path(source).suffix.lower()
+    if suffix not in loader_registry:
         raise ValueError(f'Неизвестный тип источника слов: {source}')
-    return loader_cls(file_path=path)
+    loader_cls = loader_registry.get_loader(suffix)
+    return loader_cls(file_path=source)
 
 
 def main() -> None:

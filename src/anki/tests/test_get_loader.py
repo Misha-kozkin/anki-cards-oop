@@ -5,9 +5,11 @@ from typing import Any
 import pytest
 import requests
 
+from anki import main
 from anki.loader import (
     JsonFileLoader,
     JsonNetworkLoader,
+    LoaderRegistry,
     TextFileLoader,
     TSVFileLoader,
 )
@@ -78,3 +80,33 @@ def test_network_loader_rejects_non_object_json(
     with pytest.raises(ValueError):
         JsonNetworkLoader('https://example.com/words').load_words()
         pytest.fail('Для JSON-списка должна быть ошибка ValueError')
+
+
+def test_new_format_works_without_changing_get_loader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Новый формат подключается одним декоратором, get_loader не меняется."""
+    registry = LoaderRegistry()
+
+    @registry.register('.csv')
+    class CsvLoader:
+        """Подделка загрузчика CSV для теста."""
+
+        def __init__(self, *, file_path: str) -> None:
+            """Запоминает путь к файлу."""
+            self.file_path = file_path
+
+    monkeypatch.setattr(main, 'loader_registry', registry)
+    loader = get_loader('words.CSV')
+    assert isinstance(loader, CsvLoader)
+    assert loader.file_path == 'words.CSV'
+
+
+def test_register_returns_class_unchanged() -> None:
+    """Декоратор register возвращает тот же класс, а не обёртку."""
+    registry = LoaderRegistry()
+
+    class Original:
+        """Класс для проверки."""
+
+    assert registry.register('.x')(Original) is Original
