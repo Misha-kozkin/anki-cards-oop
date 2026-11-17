@@ -3,13 +3,14 @@
 import argparse
 import sys
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 import requests
 
 from anki.anki import Anki
 from anki.loader import BaseFileLoader, JsonNetworkLoader, loader_registry
 from anki.ui import TextUI
+from types import TracebackType
 
 WORDS_FILE = Path(__file__).parent / 'words.txt'
 
@@ -42,8 +43,68 @@ def get_loader(source: str) -> Loader:
     return loader_cls(file_path=source)
 
 
+class WordsLoadError(Exception):
+    """Не удалось загрузить слова из источника."""
+
+
+class GameContext:
+    """Контекстный менеджер жизненного цикла игры.
+
+    При входе в блок with загружает слова в игру, при выходе
+    сохраняет их через загрузчик. Сохранение выполняется,
+    даже если внутри блока произошла ошибка.
+
+    Examples:
+        with GameContext(loader, anki):
+            TextUI(anki).main_loop()
+    """
+
+    def __init__(self, loader: Loader, anki: Anki) -> None:
+        """Запоминает загрузчик и игру.
+
+        Args:
+            loader: Загрузчик с методами load_words и save_words.
+            anki: Игра, в которую загружаются слова.
+        """
+        self._loader = loader
+        self._anki = anki
+
+    def __enter__(self) -> Anki:
+        """Загружает слова в игру.
+
+        Returns:
+            Игру с загруженными словами (для with ... as ...).
+
+        Raises:
+            WordsLoadError: Если слова не удалось загрузить.
+        """
+        try:
+            self._anki.words = self._loader.load_words()
+        except (requests.RequestException, ValueError) as error:
+            raise WordsLoadError(str(error)) from error
+        return self._anki
+
+    def __exit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_value: Optional[BaseException],
+        traceback: Optional[TracebackType],
+    ) -> None:
+        """Сохраняет слова игры при любом выходе из блока with.
+
+        Исключение из блока не подавляется: метод возвращает None,
+        и Python пробрасывает ошибку дальше после сохранения.
+
+        Args:
+            exc_type: Тип исключения или None, если ошибки не было.
+            exc_value: Само исключение или None.
+            traceback: Трассировка исключения или None.
+        """
+        self._loader.save_words(self._anki.words)
+
+
 def main() -> None:
-    """Разбирает аргументы, запускает игру и сохраняет слова при выходе."""
+    """Разбирает аргументы и запускает игру в контексте GameContext."""
     parser = argparse.ArgumentParser(
         prog='anki', description='Тренажёр словарного запаса.'
     )
@@ -63,17 +124,13 @@ def main() -> None:
     except ValueError as error:
         parser.error(str(error))
 
+    anki = Anki()
     try:
-        words = loader.load_words()
-    except (requests.RequestException, ValueError) as error:
+        with GameContext(loader, anki):
+            ui = TextUI(anki)
+            ui.main_loop()
+    except WordsLoadError as error:
         sys.exit(f'Не удалось загрузить слова: {error}')
-
-    anki = Anki(words=words)
-
-    ui = TextUI(anki)
-    ui.main_loop()
-
-    loader.save_words(anki.words)
 
 
 if __name__ == '__main__':
