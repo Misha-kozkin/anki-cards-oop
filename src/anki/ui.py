@@ -35,7 +35,7 @@ class TextUI:
         Args:
             anki_game: Объект игры, с которым работает интерфейс.
         """
-        self._anki_game = anki_game
+        self._anki_game: Anki = anki_game
 
     def _is_stop_word(self, text: str) -> bool:
         """Проверяет, ввёл ли пользователь слово для выхода.

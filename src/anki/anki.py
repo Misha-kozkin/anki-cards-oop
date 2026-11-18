@@ -35,9 +35,9 @@ class Anki:
             ValueError: Если words не словарь или в нём есть
                 ключи или значения, которые не являются строками.
         """
-        self._session_active = False
-        self._session_start_time = 0.0
-        self._session_user_score = 0
+        self._session_active: bool = False
+        self._session_start_time: float = 0.0
+        self._session_user_score: int = 0
         self._last_word: Optional[str] = None
         self.last_session_stats: dict[str, Union[int, float]] = {
             'correct_answers': 0,

@@ -12,7 +12,7 @@ from anki.loader import BaseFileLoader, JsonNetworkLoader, loader_registry
 from anki.ui import TextUI
 from types import TracebackType
 
-WORDS_FILE = Path(__file__).parent / 'words.txt'
+WORDS_FILE: Path = Path(__file__).parent / 'words.txt'
 
 Loader = Union[BaseFileLoader, JsonNetworkLoader]
 
@@ -66,8 +66,8 @@ class GameContext:
             loader: Загрузчик с методами load_words и save_words.
             anki: Игра, в которую загружаются слова.
         """
-        self._loader = loader
-        self._anki = anki
+        self._loader: Loader = loader
+        self._anki: Anki = anki
 
     def __enter__(self) -> Anki:
         """Загружает слова в игру.

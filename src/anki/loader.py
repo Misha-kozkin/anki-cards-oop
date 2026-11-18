@@ -76,7 +76,7 @@ class LoaderRegistry:
         return loader_cls
 
 
-loader_registry = LoaderRegistry()
+loader_registry: LoaderRegistry = LoaderRegistry()
 
 
 class BaseFileLoader:
@@ -281,7 +281,7 @@ class JsonNetworkLoader:
         Args:
             url: Ссылка на JSON-объект {слово: перевод}.
         """
-        self.url = url
+        self.url: str = url
 
     def load_words(self) -> dict[str, str]:
         """Скачивает слова по ссылке из атрибута url.
