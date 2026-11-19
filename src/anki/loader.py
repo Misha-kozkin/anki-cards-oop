@@ -2,81 +2,139 @@
 
 import json
 from pathlib import Path
-from typing import Callable, ClassVar, Optional, TextIO, TypeVar, Union
+from typing import Callable, ClassVar, Optional, Protocol, Self, TextIO, Union
 
 import requests
 
-LoaderClass = TypeVar('LoaderClass', bound=type)
+
+class LoaderProtocol(Protocol):
+    """Любой загрузчик слов: важны методы, а не родительский класс."""
+
+    @classmethod
+    def from_source(cls, source: str) -> Self:
+        """Создаёт загрузчик по строке источника."""
+        ...
+
+    def load_words(self) -> dict[str, str]:
+        """Загружает слова."""
+        ...
+
+    def save_words(self, words: dict[str, str]) -> None:
+        """Сохраняет слова."""
+        ...
 
 
 class LoaderRegistry:
-    """Реестр загрузчиков: связывает идентификатор источника с классом.
+    """Реестр загрузчиков: связывает класс со стратегией выбора.
 
-    Новый загрузчик регистрируется декоратором register, поэтому
-    для поддержки нового формата не нужно менять код выбора
-    загрузчика.
+    Стратегия — функция, которая по строке источника отвечает,
+    подходит ли загрузчик. Новый загрузчик регистрируется
+    декоратором register, код выбора загрузчика не меняется.
 
     Examples:
         >>> registry = LoaderRegistry()
-        >>> @registry.register('.csv')
+        >>> @registry.register(lambda source: source.endswith('.csv'))
         ... class CsvLoader:
         ...     pass
-        >>> registry.get_loader('.csv') is CsvLoader
+        >>> registry.get_loader('words.csv') is CsvLoader
         True
     """
 
     def __init__(self) -> None:
         """Создаёт пустой реестр."""
-        self._registry: dict[str, type] = {}
+        self._registry: dict[type[LoaderProtocol], Callable[[str], bool]] = {}
 
     def register(
-        self, ident: str
-    ) -> Callable[[LoaderClass], LoaderClass]:
+        self, predicate: Callable[[str], bool]
+    ) -> Callable[[type[LoaderProtocol]], type[LoaderProtocol]]:
         """Создаёт декоратор, который регистрирует класс загрузчика.
 
         Args:
-            ident: Идентификатор источника, например '.txt' или 'http'.
+            predicate: Стратегия: функция, которая получает строку
+                источника и возвращает True, если загрузчик подходит.
 
         Returns:
-            Декоратор. Он запоминает класс в реестре и возвращает
-            этот же класс без изменений.
+            Декоратор. Он запоминает класс со стратегией в реестре
+            и возвращает этот же класс без изменений.
         """
-        def decorator(cls: LoaderClass) -> LoaderClass:
-            self._registry[ident] = cls
+        def decorator(cls: type[LoaderProtocol]) -> type[LoaderProtocol]:
+            self._registry[cls] = predicate
             return cls
 
         return decorator
 
-    def __contains__(self, ident: str) -> bool:
-        """Проверяет, зарегистрирован ли загрузчик (оператор in).
+    def get_loader(self, source: str) -> type[LoaderProtocol]:
+        """Находит класс загрузчика, стратегия которого подходит к source.
+
+        Стратегии проверяются в порядке регистрации, побеждает первая,
+        вернувшая True.
 
         Args:
-            ident: Идентификатор источника.
+            source: Путь к файлу со словами или ссылка.
 
         Returns:
-            True, если для ident есть загрузчик.
-        """
-        return ident in self._registry
-
-    def get_loader(self, ident: str) -> type:
-        """Возвращает класс загрузчика по идентификатору.
-
-        Args:
-            ident: Идентификатор источника, например '.txt' или 'http'.
-
-        Returns:
-            Зарегистрированный класс загрузчика.
+            Класс подходящего загрузчика.
 
         Raises:
-            ValueError: Если для ident ничего не зарегистрировано.
+            ValueError: Если ни одна стратегия не подошла.
         """
-        loader_cls = self._registry.get(ident)
-        if loader_cls is None:
-            raise ValueError(f'Неизвестный тип источника слов: {ident}')
-        return loader_cls
+        for loader_cls, predicate in self._registry.items():
+            if predicate(source):
+                return loader_cls
+        raise ValueError(f'Неизвестный тип источника слов: {source}')
 
 
 loader_registry: LoaderRegistry = LoaderRegistry()
+
+
+def is_url_source(source: str) -> bool:
+    """Проверяет, что источник — ссылка http:// или https://.
+
+    Args:
+        source: Строка источника.
+
+    Returns:
+        True, если это ссылка.
+    """
+    return source.startswith(('http://', 'https://'))
+
+
+def is_txt_source(source: str) -> bool:
+    """Проверяет, что источник — локальный файл .txt.
+
+    Args:
+        source: Строка источника.
+
+    Returns:
+        True для файла с расширением .txt (без учёта регистра).
+    """
+    return not is_url_source(source) and Path(source).suffix.lower() == '.txt'
+
+
+def is_tsv_source(source: str) -> bool:
+    """Проверяет, что источник — локальный файл .tsv.
+
+    Args:
+        source: Строка источника.
+
+    Returns:
+        True для файла с расширением .tsv (без учёта регистра).
+    """
+    return not is_url_source(source) and Path(source).suffix.lower() == '.tsv'
+
+
+def is_json_source(source: str) -> bool:
+    """Проверяет, что источник — локальный файл .json.
+
+    Args:
+        source: Строка источника.
+
+    Returns:
+        True для файла с расширением .json (без учёта регистра).
+    """
+    return (
+        not is_url_source(source) and Path(source).suffix.lower() == '.json'
+    )
 
 
 class BaseFileLoader:
@@ -115,6 +173,18 @@ class BaseFileLoader:
                 f'Путь {path} указывает на директорию, а нужен файл'
             )
         self._file_path: Path = path
+
+    @classmethod
+    def from_source(cls, source: str) -> Self:
+        """Создаёт загрузчик для файла по пути из source.
+
+        Args:
+            source: Путь к файлу со словами.
+
+        Returns:
+            Загрузчик того класса, у которого вызван метод.
+        """
+        return cls(file_path=source)
 
     def load_words(self) -> dict[str, str]:
         """Читает слова из файла.
@@ -175,7 +245,7 @@ class BaseFileLoader:
         raise NotImplementedError
 
 
-@loader_registry.register('.txt')
+@loader_registry.register(is_txt_source)
 class TextFileLoader(BaseFileLoader):
     """Хранит слова в текстовом файле, по паре на строку.
 
@@ -203,7 +273,7 @@ class TextFileLoader(BaseFileLoader):
             file_object.write(word + ',' + translation + '\n')
 
 
-@loader_registry.register('.tsv')
+@loader_registry.register(is_tsv_source)
 class TSVFileLoader(BaseFileLoader):
     """Хранит слова в TSV-файле: слово и перевод разделены табуляцией.
 
@@ -231,7 +301,7 @@ class TSVFileLoader(BaseFileLoader):
             file_object.write(f'{word}\t{translation}\n')
 
 
-@loader_registry.register('.json')
+@loader_registry.register(is_json_source)
 class JsonFileLoader(BaseFileLoader):
     """Хранит слова в JSON-файле как один объект {слово: перевод}."""
 
@@ -263,7 +333,7 @@ class JsonFileLoader(BaseFileLoader):
         json.dump(words, file_object, indent=2, ensure_ascii=False)
 
 
-@loader_registry.register('http')
+@loader_registry.register(is_url_source)
 class JsonNetworkLoader:
     """Загружает слова из JSON-объекта по HTTP-ссылке.
 
@@ -282,6 +352,18 @@ class JsonNetworkLoader:
             url: Ссылка на JSON-объект {слово: перевод}.
         """
         self.url: str = url
+
+    @classmethod
+    def from_source(cls, source: str) -> Self:
+        """Создаёт загрузчик для ссылки из source.
+
+        Args:
+            source: Ссылка на JSON со словами.
+
+        Returns:
+            Сетевой загрузчик.
+        """
+        return cls(url=source)
 
     def load_words(self) -> dict[str, str]:
         """Скачивает слова по ссылке из атрибута url.

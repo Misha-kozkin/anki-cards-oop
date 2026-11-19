@@ -3,26 +3,20 @@
 import argparse
 import sys
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
 import requests
 
 from anki.anki import Anki
-from anki.loader import BaseFileLoader, JsonNetworkLoader, loader_registry
+from anki.loader import LoaderProtocol, loader_registry
 from anki.ui import TextUI
 from types import TracebackType
 
 WORDS_FILE: Path = Path(__file__).parent / 'words.txt'
 
-Loader = Union[BaseFileLoader, JsonNetworkLoader]
 
-
-def get_loader(source: str) -> Loader:
+def get_loader(source: str) -> LoaderProtocol:
     """Создаёт загрузчик слов, подходящий для источника.
-
-    Ссылка, начинающаяся с http:// или https://, ищется в реестре
-    по идентификатору 'http'. Для файла идентификатор — его
-    расширение, например '.txt'.
 
     Args:
         source: Путь к файлу со словами или ссылка на JSON.
@@ -31,16 +25,10 @@ def get_loader(source: str) -> Loader:
         Загрузчик с методами load_words и save_words.
 
     Raises:
-        ValueError: Если для источника нет зарегистрированного загрузчика.
+        ValueError: Если ни один загрузчик не подходит к источнику.
     """
-    if source.startswith(('http://', 'https://')):
-        loader_cls = loader_registry.get_loader('http')
-        return loader_cls(url=source)
-    suffix = Path(source).suffix.lower()
-    if suffix not in loader_registry:
-        raise ValueError(f'Неизвестный тип источника слов: {source}')
-    loader_cls = loader_registry.get_loader(suffix)
-    return loader_cls(file_path=source)
+    loader_cls = loader_registry.get_loader(source)
+    return loader_cls.from_source(source)
 
 
 class WordsLoadError(Exception):
@@ -59,14 +47,14 @@ class GameContext:
             TextUI(anki).main_loop()
     """
 
-    def __init__(self, loader: Loader, anki: Anki) -> None:
+    def __init__(self, loader: LoaderProtocol, anki: Anki) -> None:
         """Запоминает загрузчик и игру.
 
         Args:
             loader: Загрузчик с методами load_words и save_words.
             anki: Игра, в которую загружаются слова.
         """
-        self._loader: Loader = loader
+        self._loader: LoaderProtocol = loader
         self._anki: Anki = anki
 
     def __enter__(self) -> Anki:
