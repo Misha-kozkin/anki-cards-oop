@@ -1,7 +1,6 @@
 """Текстовый интерфейс игры Anki для работы в консоли."""
 
-import textwrap
-from typing import ClassVar
+from typing import Callable, ClassVar
 
 from anki.anki import Anki
 
@@ -13,19 +12,12 @@ class TextUI:
     игры (слова, проверка переводов) находится в объекте Anki,
     который передаётся при создании интерфейса.
 
+    Меню строится заново перед каждым выбором: пункты, которым
+    нужны слова, скрыты, пока в игре нет слов.
+
     Attributes:
-        MENU: Текст главного меню игры, общий для всех экземпляров.
         STOP_WORD: Слово для выхода из игры и из добавления слов.
     """
-
-    MENU: ClassVar[str] = textwrap.dedent("""\
-        Меню:
-            1. Начать игру
-            2. Добавить слова
-            3. Тренировка до первой ошибки
-            4. Вывод всех слов
-            5. Выход
-        """)
 
     STOP_WORD: ClassVar[str] = 'СТОП'
 
@@ -36,6 +28,30 @@ class TextUI:
             anki_game: Объект игры, с которым работает интерфейс.
         """
         self._anki_game: Anki = anki_game
+        self._is_running: bool = False
+        # Команды меню: (обработчик, текст пункта, условие видимости).
+        self._command_definition: list[
+            tuple[Callable[[], None], str, Callable[[], bool]]
+        ] = [
+            (self.start_game, 'Начать игру', self._has_words),
+            (self.add_words, 'Добавить слова', lambda: True),
+            (
+                self.train_until_mistake,
+                'Тренировка до первой ошибки',
+                self._has_words,
+            ),
+            (self.find_translation, 'Найти перевод', self._has_words),
+            (self.show_words, 'Вывод всех слов', self._has_words),
+            (self.stop, 'Выход', lambda: True),
+        ]
+
+    def _has_words(self) -> bool:
+        """Проверяет, есть ли в игре слова.
+
+        Returns:
+            True, если в игре есть хотя бы одно слово.
+        """
+        return len(self._anki_game) > 0
 
     def _is_stop_word(self, text: str) -> bool:
         """Проверяет, ввёл ли пользователь слово для выхода.
@@ -129,20 +145,49 @@ class TextUI:
         for word, translation in self._anki_game:
             print(f'{word} - {translation}')
 
+    def find_translation(self) -> None:
+        """Спрашивает слово и выводит его перевод, если слово есть в игре."""
+        word = input('Введите слово для поиска: ')
+        if word in self._anki_game:
+            translation = self._anki_game.get_translation(word)
+            print(f'Перевод: {translation}')
+        else:
+            print(f'Слова «{word.strip()}» нет в игре')
+
+    def stop(self) -> None:
+        """Останавливает главный цикл меню."""
+        self._is_running = False
+
+    def get_available_commands(self) -> list[tuple[Callable[[], None], str]]:
+        """Возвращает команды, которые сейчас можно показать в меню.
+
+        Returns:
+            Список пар (обработчик, текст пункта) в порядке меню.
+        """
+        commands: list[tuple[Callable[[], None], str]] = []
+        for func, description, is_visible in self._command_definition:
+            if is_visible():
+                commands.append((func, description))
+        return commands
+
     def main_loop(self) -> None:
-        """Показывает меню и выполняет выбранные пункты до выбора «Выход»."""
-        while True:
-            print(self.MENU)
+        """Показывает меню и выполняет выбранные пункты до выбора «Выход».
+
+        Номера пунктов присваиваются по порядку доступных команд.
+        """
+        self._is_running = True
+        while self._is_running:
+            commands: dict[str, Callable[[], None]] = {}
+            menu_lines: list[str] = ['Меню:']
+            for number, (func, description) in enumerate(
+                self.get_available_commands(), start=1
+            ):
+                commands[str(number)] = func
+                menu_lines.append(f'    {number}. {description}')
+            print('\n'.join(menu_lines))
             choice = input('Пункт меню: ').strip()
-            if choice == '1':
-                self.start_game()
-            elif choice == '2':
-                self.add_words()
-            elif choice == '3':
-                self.train_until_mistake()
-            elif choice == '4':
-                self.show_words()
-            elif choice == '5':
-                break
+            if choice in commands:
+                commands[choice]()
             else:
                 print('Неизвестный пункт меню')
+            print()

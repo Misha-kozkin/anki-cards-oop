@@ -45,11 +45,14 @@ def test_start_game_reports_empty_game(
 def test_main_loop_stops_on_exit_and_reports_unknown_choice(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Метод main_loop сообщает о неизвестном пункте и выходит по «5»."""
-    answers = fake_input(['abc', '5'])
+    """Метод main_loop сообщает о неизвестном пункте и выходит по «Выход».
+
+    В пустой игре в меню два пункта, поэтому «Выход» — это «2».
+    """
+    answers = fake_input(['abc', '5', '2'])
     monkeypatch.setattr('builtins.input', lambda prompt='': next(answers))
     TextUI(Anki()).main_loop()
-    assert 'Неизвестный пункт меню' in capsys.readouterr().out
+    assert capsys.readouterr().out.count('Неизвестный пункт меню') == 2
 
 
 def test_train_until_mistake_counts_answers_until_error(
@@ -84,3 +87,69 @@ def test_train_until_mistake_with_empty_game(
     TextUI(anki).train_until_mistake()
     assert 'нет слов' in capsys.readouterr().out
     anki.start_session()
+
+
+def test_menu_of_empty_game_has_only_add_words_and_exit() -> None:
+    """Без слов в меню остаются только «Добавить слова» и «Выход»."""
+    ui = TextUI(Anki())
+    descriptions = [desc for _, desc in ui.get_available_commands()]
+    assert descriptions == ['Добавить слова', 'Выход']
+
+
+def test_menu_with_words_shows_all_commands_in_order() -> None:
+    """Со словами меню показывает все пункты в порядке объявления."""
+    ui = TextUI(Anki(words={'cat': 'кот'}))
+    descriptions = [desc for _, desc in ui.get_available_commands()]
+    assert descriptions == [
+        'Начать игру',
+        'Добавить слова',
+        'Тренировка до первой ошибки',
+        'Найти перевод',
+        'Вывод всех слов',
+        'Выход',
+    ]
+
+
+def test_menu_appears_after_adding_first_word(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    """После добавления слова меню перестраивается и нумерация меняется."""
+    answers = fake_input(['1', 'cat', 'кот', 'стоп', '6'])
+    monkeypatch.setattr('builtins.input', lambda prompt='': next(answers))
+    TextUI(Anki()).main_loop()
+    output = capsys.readouterr().out
+    assert '2. Выход' in output
+    assert '6. Выход' in output
+
+
+def test_stop_sets_is_running_to_false() -> None:
+    """Метод stop останавливает главный цикл."""
+    ui = TextUI(Anki())
+    ui._is_running = True
+    ui.stop()
+    assert ui._is_running is False
+
+
+@pytest.mark.parametrize('word', ['cat', '  CAT '])
+def test_find_translation_prints_translation(
+    word: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Метод find_translation находит слово без учёта регистра и пробелов."""
+    answers = fake_input([word])
+    monkeypatch.setattr('builtins.input', lambda prompt='': next(answers))
+    TextUI(Anki(words={'cat': 'кот'})).find_translation()
+    assert 'Перевод: кот' in capsys.readouterr().out
+
+
+def test_find_translation_reports_missing_word(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Метод find_translation сообщает, что слова нет, и не падает."""
+    answers = fake_input(['dog'])
+    monkeypatch.setattr('builtins.input', lambda prompt='': next(answers))
+    TextUI(Anki(words={'cat': 'кот'})).find_translation()
+    output = capsys.readouterr().out
+    assert 'нет в игре' in output
+    assert 'кот' not in output
